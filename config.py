@@ -11,3 +11,10 @@ CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@film_by_code')
 
 # ID адміністратора (ваш Telegram ID)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '7028095858'))
+
+# Pyrogram API credentials (отримайте на https://my.telegram.org/)
+API_ID = int(os.getenv('API_ID', '20156012'))  # Тимчасово вимкнено
+API_HASH = os.getenv('API_HASH', '2c8ade68fd2d202a3553e503a5e8125b')  # Тимчасово вимкнено
+
+# Номер телефону для Pyrogram (з кодом країни, наприклад: +380123456789)
+PHONE_NUMBER = os.getenv('PHONE_NUMBER', '+380931082506')  # Ваш номер телефону

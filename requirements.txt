@@ -9,3 +9,7 @@ python-telegram-bot==20.0
 # На Railway: PostgreSQL
 psycopg2-binary==2.9.9
 
+# Pyrogram - для сканування каналу та моніторингу нових постів
+# Дозволяє читати історію каналу та слухати нові повідомлення
+pyrogram==2.0.106
+

@@ -9,6 +9,7 @@ import re  # Для пошуку коду в тексті
 # Імпортуємо наші власні файли
 import config
 import database
+from channel_scanner import scanner
 
 # Налаштування логування (щоб бачити що відбувається)
 logging.basicConfig(
@@ -157,42 +158,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not movies:
             await query.edit_message_text(
                 "База даних порожня!\n\n"
-                "Публікуйте пости в канал з текстом 'Код: F001'"
+                "Публікуйте пости в канал з текстом 'Код: 001'"
             )
             return
         
         # Формуємо новий список
         text = f"📊 База даних фільмів ({len(movies)} фільмів)\n\n"
         
+        # Словник з назвами фільмів
+        movie_titles = {
+            '001': 'Ніхто2',
+            '002': 'Голови держав'
+        }
+        
         for i, movie in enumerate(movies, 1):
-            # Отримуємо назву фільму з поста в каналі
-            try:
-                message_obj = await context.bot.forward_message(
-                    chat_id=query.message.chat_id,
-                    from_chat_id=movie['chat_id'],
-                    message_id=movie['message_id']
-                )
-                
-                # Парсимо назву з тексту повідомлення
-                message_text = message_obj.text or message_obj.caption or ""
-                title = "Невідома назва"
-                
-                # Шукаємо "Назва: ..." в тексті
-                import re
-                title_match = re.search(r'Назва:\s*([^\n]+)', message_text)
-                if title_match:
-                    title = title_match.group(1).strip()
-                
-                # Видаляємо тимчасове повідомлення
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=message_obj.message_id
-                )
-                
-            except Exception as e:
-                logger.error(f"Помилка отримання назви фільму {movie['code']}: {e}")
-                title = "Невідома назва"
-            
+            # Отримуємо назву з нашого словника
+            title = movie_titles.get(movie['code'], 'Невідома назва')
             text += f"{i}. **{movie['code']}** - {title}\n"
         
         # Створюємо кнопки
@@ -357,7 +338,7 @@ async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            "Щоб користуватись ботом, спочатку підпишіться на канал!",
+            "Щоб користуватись ботом, спочатку підпішіться на канал!",
             reply_markup=reply_markup
         )
         return
@@ -390,12 +371,27 @@ async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Користувач {user.id} знайшов фільм {message_text}")
             
         except Exception as e:
-            # Якщо виникла помилка (наприклад, пост видалено)
+            # Якщо виникла помилка (наприклад, пост видалено або неправильний message_id)
             logger.error(f"Помилка при копіюванні поста: {e}")
+            
+            # Видаляємо фільм з бази даних, бо він невалідний
+            database.delete_movie(message_text)
+            
             await update.message.reply_text(
-                "Помилка! Не вдалося знайти пост в каналі. "
-                "Можливо його було видалено."
+                f"❌ Помилка! Пост для фільму {message_text} не знайдено в каналі.\n\n"
+                f"Фільм видалено з бази даних.\n\n"
+                f"Адміністратор має опублікувати його заново в канал {config.CHANNEL_USERNAME}"
             )
+            
+            # Повідомляємо адміну
+            try:
+                await context.bot.send_message(
+                    chat_id=config.ADMIN_ID,
+                    text=f"⚠️ Користувач спробував знайти фільм {message_text}, але пост не знайдено!\n\n"
+                         f"Фільм видалено з бази. Опублікуйте його заново в канал."
+                )
+            except:
+                pass
     else:
         # Фільм не знайдено
         not_found_text = f"""
@@ -411,10 +407,81 @@ async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ========== АДМІНІСТРАТИВНІ КОМАНДИ ==========
-# 
-# УВАГА: Команда /add більше НЕ ПОТРІБНА!
-# Бот автоматично зчитує пости з каналу @film_by_code
-# Просто публікуйте пост з текстом "Код: F001" і все!
+
+async def add_movie_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда /add - ручне додавання фільму (тільки для адміністратора)
+    Формат: /add КОД MESSAGE_ID
+    Приклад: /add 001 123
+    
+    Щоб знайти MESSAGE_ID:
+    1. Відкрийте пост в каналі через браузер
+    2. Подивіться на URL: t.me/channel_name/123 (де 123 - це MESSAGE_ID)
+    """
+    user = update.effective_user
+    
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text("Ця команда доступна тільки адміністратору!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Неправильний формат!\n\n"
+            "Формат: /add КОД MESSAGE_ID\n"
+            "Приклад: /add 001 123\n\n"
+            "Щоб знайти MESSAGE_ID:\n"
+            "1. Відкрийте пост в каналі через браузер\n"
+            "2. URL буде: t.me/channel_name/123\n"
+            "3. Число 123 - це MESSAGE_ID"
+        )
+        return
+    
+    code = context.args[0].upper()
+    
+    try:
+        message_id = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ MESSAGE_ID має бути числом!")
+        return
+    
+    # Отримуємо ID каналу
+    try:
+        channel_info = await context.bot.get_chat(config.CHANNEL_USERNAME)
+        chat_id = channel_info.id
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка отримання інформації про канал: {e}")
+        return
+    
+    # Перевіряємо чи існує повідомлення
+    try:
+        await context.bot.copy_message(
+            chat_id=user.id,
+            from_chat_id=chat_id,
+            message_id=message_id
+        )
+        await update.message.reply_text("✅ Пост знайдено! Зараз додам в базу...")
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Помилка! Повідомлення з ID {message_id} не знайдено в каналі.\n\n"
+            f"Перевірте MESSAGE_ID та спробуйте ще раз."
+        )
+        return
+    
+    # Додаємо фільм в базу
+    success = database.add_movie(code, message_id, chat_id, link=None)
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ Фільм {code} успішно додано!\n\n"
+            f"Message ID: {message_id}\n"
+            f"Chat ID: {chat_id}\n\n"
+            f"Користувачі тепер можуть знайти його за кодом {code}"
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Фільм з кодом {code} вже існує в базі!\n\n"
+            f"Видаліть старий: /delete {code}"
+        )
 
 
 async def list_movies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -503,36 +570,15 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Формуємо повідомлення зі списком фільмів
     text = f"📊 База даних фільмів ({len(movies)} фільмів)\n\n"
     
+    # Словник з назвами фільмів
+    movie_titles = {
+        '001': 'Ніхто2',
+        '002': 'Голови держав'
+    }
+    
     for i, movie in enumerate(movies, 1):
-        # Отримуємо назву фільму з поста в каналі
-        try:
-            channel_message = await context.bot.get_chat(movie['chat_id'])
-            message_obj = await context.bot.forward_message(
-                chat_id=update.effective_chat.id,
-                from_chat_id=movie['chat_id'],
-                message_id=movie['message_id']
-            )
-            
-            # Парсимо назву з тексту повідомлення
-            message_text = message_obj.text or message_obj.caption or ""
-            title = "Невідома назва"
-            
-            # Шукаємо "Назва: ..." в тексті
-            import re
-            title_match = re.search(r'Назва:\s*([^\n]+)', message_text)
-            if title_match:
-                title = title_match.group(1).strip()
-            
-            # Видаляємо тимчасове повідомлення
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=message_obj.message_id
-            )
-            
-        except Exception as e:
-            logger.error(f"Помилка отримання назви фільму {movie['code']}: {e}")
-            title = "Невідома назва"
-        
+        # Отримуємо назву з нашого словника
+        title = movie_titles.get(movie['code'], 'Невідома назва')
         text += f"{i}. **{movie['code']}** - {title}\n"
     
     # Створюємо кнопки для кожного фільму
@@ -576,16 +622,31 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("🔄 Сканування каналу... Це може зайняти кілька хвилин.")
     
-    # Запускаємо сканування
-    await scan_channel_for_movies(context)
-    
-    # Показуємо результат
-    movies = database.get_all_movies()
-    await update.message.reply_text(
-        f"✅ Сканування завершено!\n\n"
-        f"📊 Знайдено фільмів: {len(movies)}\n\n"
-        f"Використовуйте /database для перегляду"
-    )
+    try:
+        # Запускаємо Pyrogram сканер
+        movies_count = await scanner.scan_channel_history()
+        
+        # Показуємо результат
+        movies = database.get_all_movies()
+        result_text = f"OK Сканування завершено!\n\n"
+        result_text += f"DB Додано нових фільмів: {movies_count}\n"
+        result_text += f"DB Всього в базі: {len(movies)}\n\n"
+        
+        if movies:
+            result_text += "Фільми в базі:\n"
+            for movie in movies:
+                result_text += f"• {movie['code']} (ID: {movie['message_id']})\n"
+        else:
+            result_text += "База даних порожня"
+        
+        await update.message.reply_text(result_text)
+        
+    except Exception as e:
+        logger.error(f"Помилка сканування: {e}")
+        await update.message.reply_text(
+            f"❌ Помилка сканування: {e}\n\n"
+            f"Перевірте налаштування API_ID та API_HASH в config.py"
+        )
 
 
 # ========== СКАНУВАННЯ КАНАЛУ ==========
@@ -593,80 +654,56 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
     """
     Сканує канал і відновлює базу даних з усіх постів
+    
+    ВАЖЛИВО: Ця функція НЕ МОЖЕ отримати старі повідомлення через обмеження Bot API!
+    
+    Рекомендації:
+    1. Видаліть базу даних (movies.db)
+    2. Перезапустіть бота
+    3. Опублікуйте заново всі пости в канал
+    4. Бот автоматично їх додасть (функція handle_channel_post)
+    
+    АБО використовуйте Pyrogram для реального сканування
     """
     try:
-        print("Сканування каналу для відновлення бази даних...")
+        print("⚠️ УВАГА: Сканування каналу через Bot API неможливе!")
+        print("")
+        print("Telegram Bot API не дозволяє отримувати історію повідомлень з каналу.")
+        print("")
+        print("Рішення:")
+        print("1. АВТОМАТИЧНЕ (рекомендовано):")
+        print("   - Опублікуйте заново всі пости в канал")
+        print("   - Бот автоматично їх додасть")
+        print("")
+        print("2. РУЧНЕ:")
+        print("   - Використовуйте /add для кожного фільму окремо")
+        print("")
+        print("3. ЧЕРЕЗ PYROGRAM:")
+        print("   - Встановіть pyrogram: pip install pyrogram")
+        print("   - Створіть окремий скрипт для сканування")
+        print("")
         
-        # Очищаємо поточну базу даних
-        database.init_database()
-        print("База даних очищена")
+        # Не очищаємо базу даних!
+        movies = database.get_all_movies()
+        print(f"📊 Поточна база даних: {len(movies)} фільмів")
         
-        # Отримуємо ID каналу
-        channel_username = config.CHANNEL_USERNAME.lstrip('@')
-        channel_id = f"@{channel_username}"
-        
-        # Отримуємо інформацію про канал
-        try:
-            channel_info = await context.bot.get_chat(channel_id)
-            channel_chat_id = channel_info.id
-        except Exception as e:
-            print(f"Помилка отримання інформації про канал: {e}")
-            return
-        
-        print(f"Сканування каналу {channel_username} (ID: {channel_chat_id})")
-        
-        # Отримуємо останні 100 повідомлень з каналу
-        messages_processed = 0
-        movies_found = 0
-        
-        try:
-            # Простий підхід - додаємо фільми вручну на основі відомих кодів
-            print("Додаємо відомі фільми вручну...")
-            
-            # Список відомих фільмів з каналу
-            known_movies = [
-                {
-                    'code': '001',
-                    'title': 'Ніхто2',
-                    'year': '2025',
-                    'description': 'Чотири роки потому після кривавих подій першої частини Хатч Менсел намагається відновити нормальне життя.'
-                },
-                {
-                    'code': '002', 
-                    'title': 'Голови держав',
-                    'year': '2025',
-                    'description': 'Президент США і колишній актор Вілл Деррінджер і прем\'єр-міністр Великої Британії Сем Кларк опиняються у скрутному становищі.'
-                }
-            ]
-            
-            for movie in known_movies:
-                # Додаємо фільм в базу даних
-                success = database.add_movie(
-                    code=movie['code'],
-                    message_id=1000 + int(movie['code']),  # Фейковий message_id
-                    chat_id=channel_chat_id,
-                    link=None
-                )
-                
-                if success:
-                    movies_found += 1
-                    print(f"Додано фільм: {movie['code']} - {movie['title']}")
-                else:
-                    print(f"Помилка додавання фільму: {movie['code']}")
-                
-                messages_processed += 1
-        
-        except Exception as e:
-            print(f"Помилка при скануванні повідомлень: {e}")
-        
-        print(f"Сканування завершено!")
-        print(f"Оброблено повідомлень: {messages_processed}")
-        print(f"Знайдено фільмів: {movies_found}")
+        return
         
     except Exception as e:
-        print(f"Помилка сканування каналу: {e}")
+        print(f"Помилка: {e}")
 
 # ========== ГОЛОВНА ФУНКЦІЯ ==========
+
+async def start_scanner_background():
+    """Запуск сканера в фоновому режимі"""
+    try:
+        await scanner.start()
+        logger.info("✅ Pyrogram сканер запущено!")
+        
+        # Запускаємо моніторинг нових постів
+        await scanner.monitor_new_posts()
+    except Exception as e:
+        logger.error(f"❌ Помилка запуску сканера: {e}")
 
 def main():
     """
@@ -677,6 +714,16 @@ def main():
     # Ініціалізуємо базу даних
     database.init_database()
     print("База даних готова!")
+    
+    # Показуємо стан бази даних
+    movies = database.get_all_movies()
+    print(f"DB База даних: {len(movies)} фільмів")
+    if movies:
+        print("Фільми в базі:")
+        for movie in movies:
+            print(f"  - {movie['code']} (ID: {movie['message_id']})")
+    else:
+        print("База даних порожня")
     
     # Створюємо додаток бота (вимикаємо job_queue, бо він нам не потрібен)
     application = (
@@ -689,6 +736,7 @@ def main():
     # Реєструємо обробники команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", start))  # /help працює так само як /start
+    application.add_handler(CommandHandler("add", add_movie_command))  # Ручне додавання фільму
     application.add_handler(CommandHandler("list", list_movies_command))
     application.add_handler(CommandHandler("delete", delete_movie_command))
     application.add_handler(CommandHandler("database", database_command))  # Нова команда!
@@ -706,6 +754,21 @@ def main():
     # Запускаємо бота
     print("Бот запущено! Натисніть Ctrl+C для зупинки.")
     print("Використовуйте /scan для відновлення бази даних з каналу.")
+    
+    # Запускаємо сканер в фоновому режимі (тільки якщо налаштовано API)
+    if config.API_ID != 'YOUR_API_ID' and config.API_HASH != 'YOUR_API_HASH':
+        import asyncio
+        import threading
+        
+        def run_scanner():
+            asyncio.run(start_scanner_background())
+        
+        scanner_thread = threading.Thread(target=run_scanner, daemon=True)
+        scanner_thread.start()
+        print("OK Pyrogram сканер запущено!")
+    else:
+        print("WARN Pyrogram не налаштовано. Використовуйте /add для ручного додавання фільмів.")
+    
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
