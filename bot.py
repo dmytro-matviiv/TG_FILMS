@@ -666,7 +666,7 @@ async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
 
 # ========== ГОЛОВНА ФУНКЦІЯ ==========
 
-async def main():
+def main():
     """
     Головна функція - запускає бота
     """
@@ -683,9 +683,6 @@ async def main():
         .job_queue(None)  # Вимикаємо планувальник завдань
         .build()
     )
-    
-    # Ініціалізуємо бота перед використанням
-    await application.initialize()
     
     # Реєструємо обробники команд
     application.add_handler(CommandHandler("start", start))
@@ -704,22 +701,13 @@ async def main():
     # Реєструємо обробник текстових повідомлень від користувачів
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_movie))
     
-    # Автоматичне сканування каналу при запуску
-    print("Сканування каналу при запуску...")
-    await scan_channel_for_movies(application.bot)
-    
     # Запускаємо бота
     print("Бот запущено! Натисніть Ctrl+C для зупинки.")
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("Використовуйте /scan для відновлення бази даних з каналу.")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 # Якщо файл запущено напряму - запускаємо бота
 if __name__ == '__main__':
-    import asyncio
-    try:
-        asyncio.run(main())
-    except RuntimeError:
-        # Якщо event loop вже запущений, використовуємо його
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
+    main()
 
