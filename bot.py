@@ -555,16 +555,118 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+        await update.message.reply_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+
+
+# ========== КОМАНДА СКАНУВАННЯ ==========
+
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда /scan - сканує канал і відновлює базу даних
+    """
+    user = update.effective_user
+    
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text("Ця команда доступна тільки адміністратору!")
+        return
+    
+    await update.message.reply_text("🔄 Сканування каналу... Це може зайняти кілька хвилин.")
+    
+    # Запускаємо сканування
+    await scan_channel_for_movies(context)
+    
+    # Показуємо результат
+    movies = database.get_all_movies()
     await update.message.reply_text(
-        text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
+        f"✅ Сканування завершено!\n\n"
+        f"📊 Знайдено фільмів: {len(movies)}\n\n"
+        f"Використовуйте /database для перегляду"
     )
 
 
+# ========== СКАНУВАННЯ КАНАЛУ ==========
+
+async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Сканує канал і відновлює базу даних з усіх постів
+    """
+    try:
+        print("Сканування каналу для відновлення бази даних...")
+        
+        # Очищаємо поточну базу даних
+        database.init_database()
+        print("База даних очищена")
+        
+        # Отримуємо ID каналу
+        channel_username = config.CHANNEL_USERNAME.lstrip('@')
+        channel_id = f"@{channel_username}"
+        
+        # Отримуємо інформацію про канал
+        try:
+            channel_info = await context.bot.get_chat(channel_id)
+            channel_chat_id = channel_info.id
+        except Exception as e:
+            print(f"Помилка отримання інформації про канал: {e}")
+            return
+        
+        print(f"Сканування каналу {channel_username} (ID: {channel_chat_id})")
+        
+        # Отримуємо останні 100 повідомлень з каналу
+        messages_processed = 0
+        movies_found = 0
+        
+        try:
+            # Отримуємо повідомлення з каналу
+            async for message in context.bot.get_chat_history(chat_id=channel_chat_id, limit=100):
+                messages_processed += 1
+                
+                # Отримуємо текст повідомлення
+                message_text = ""
+                if message.text:
+                    message_text = message.text
+                elif message.caption:
+                    message_text = message.caption
+                
+                # Шукаємо код фільму в тексті
+                code_match = re.search(r'Код:\s*([A-Za-z0-9]+)', message_text)
+                if code_match:
+                    code = code_match.group(1).strip()
+                    
+                    # Шукаємо посилання
+                    link_match = re.search(r'Посилання:\s*(https?://[^\s\n]+)', message_text)
+                    link = link_match.group(1).strip() if link_match else None
+                    
+                    # Додаємо фільм в базу даних
+                    success = database.add_movie(
+                        code=code,
+                        message_id=message.message_id,
+                        chat_id=channel_chat_id,
+                        link=link
+                    )
+                    
+                    if success:
+                        movies_found += 1
+                        print(f"Додано фільм: {code}")
+                    else:
+                        print(f"Помилка додавання фільму: {code}")
+        
+        except Exception as e:
+            print(f"Помилка при скануванні повідомлень: {e}")
+        
+        print(f"Сканування завершено!")
+        print(f"Оброблено повідомлень: {messages_processed}")
+        print(f"Знайдено фільмів: {movies_found}")
+        
+    except Exception as e:
+        print(f"Помилка сканування каналу: {e}")
+
 # ========== ГОЛОВНА ФУНКЦІЯ ==========
 
-def main():
+async def main():
     """
     Головна функція - запускає бота
     """
@@ -582,12 +684,17 @@ def main():
         .build()
     )
     
+    # Автоматичне сканування каналу при запуску
+    print("Сканування каналу при запуску...")
+    await scan_channel_for_movies(application.bot)
+    
     # Реєструємо обробники команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", start))  # /help працює так само як /start
     application.add_handler(CommandHandler("list", list_movies_command))
     application.add_handler(CommandHandler("delete", delete_movie_command))
     application.add_handler(CommandHandler("database", database_command))  # Нова команда!
+    application.add_handler(CommandHandler("scan", scan_command))  # Команда сканування каналу
     
     # Реєструємо обробник кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
@@ -600,10 +707,11 @@ def main():
     
     # Запускаємо бота
     print("Бот запущено! Натисніть Ctrl+C для зупинки.")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 # Якщо файл запущено напряму - запускаємо бота
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
 
