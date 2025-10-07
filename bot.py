@@ -165,9 +165,35 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"📊 База даних фільмів ({len(movies)} фільмів)\n\n"
         
         for i, movie in enumerate(movies, 1):
-            text += f"{i}. Код: {movie['code']}\n"
-            text += f"   Message ID: {movie['message_id']}\n"
-            text += f"   Посилання: {movie.get('link', 'Не вказано')}\n\n"
+            # Отримуємо назву фільму з поста в каналі
+            try:
+                message_obj = await context.bot.forward_message(
+                    chat_id=query.message.chat_id,
+                    from_chat_id=movie['chat_id'],
+                    message_id=movie['message_id']
+                )
+                
+                # Парсимо назву з тексту повідомлення
+                message_text = message_obj.text or message_obj.caption or ""
+                title = "Невідома назва"
+                
+                # Шукаємо "Назва: ..." в тексті
+                import re
+                title_match = re.search(r'Назва:\s*([^\n]+)', message_text)
+                if title_match:
+                    title = title_match.group(1).strip()
+                
+                # Видаляємо тимчасове повідомлення
+                await context.bot.delete_message(
+                    chat_id=query.message.chat_id,
+                    message_id=message_obj.message_id
+                )
+                
+            except Exception as e:
+                logger.error(f"Помилка отримання назви фільму {movie['code']}: {e}")
+                title = "Невідома назва"
+            
+            text += f"{i}. **{movie['code']}** - {title}\n"
         
         # Створюємо кнопки
         keyboard = []
@@ -185,7 +211,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔄 Оновити", callback_data="refresh_database")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(text, reply_markup=reply_markup)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     
     elif query.data.startswith("delete_"):
         # Користувач натиснув кнопку видалення фільму
@@ -478,9 +504,36 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"📊 База даних фільмів ({len(movies)} фільмів)\n\n"
     
     for i, movie in enumerate(movies, 1):
-        text += f"{i}. Код: {movie['code']}\n"
-        text += f"   Message ID: {movie['message_id']}\n"
-        text += f"   Посилання: {movie.get('link', 'Не вказано')}\n\n"
+        # Отримуємо назву фільму з поста в каналі
+        try:
+            channel_message = await context.bot.get_chat(movie['chat_id'])
+            message_obj = await context.bot.forward_message(
+                chat_id=update.effective_chat.id,
+                from_chat_id=movie['chat_id'],
+                message_id=movie['message_id']
+            )
+            
+            # Парсимо назву з тексту повідомлення
+            message_text = message_obj.text or message_obj.caption or ""
+            title = "Невідома назва"
+            
+            # Шукаємо "Назва: ..." в тексті
+            import re
+            title_match = re.search(r'Назва:\s*([^\n]+)', message_text)
+            if title_match:
+                title = title_match.group(1).strip()
+            
+            # Видаляємо тимчасове повідомлення
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=message_obj.message_id
+            )
+            
+        except Exception as e:
+            logger.error(f"Помилка отримання назви фільму {movie['code']}: {e}")
+            title = "Невідома назва"
+        
+        text += f"{i}. **{movie['code']}** - {title}\n"
     
     # Створюємо кнопки для кожного фільму
     keyboard = []
@@ -502,11 +555,11 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        text,
-        reply_markup=reply_markup,
-        parse_mode='HTML'
-    )
+        await update.message.reply_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
 
 
 # ========== ГОЛОВНА ФУНКЦІЯ ==========
