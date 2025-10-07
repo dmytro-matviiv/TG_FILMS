@@ -1,0 +1,11 @@
+# Залежності для Telegram бота пошуку фільмів
+
+# Основна бібліотека для роботи з Telegram Bot API
+# Версія 20.0 - стабільна версія
+python-telegram-bot==20.0
+
+# База даних
+# Локально: sqlite3 (включена в Python)
+# На Railway: PostgreSQL
+psycopg2-binary==2.9.9
+
