@@ -39,9 +39,8 @@ movies.db
 Thumbs.db
 desktop.ini
 
-# Environment variables and config (НЕ завантажуємо на GitHub!)
+# Environment variables (НЕ завантажуємо на GitHub!)
 .env
-config.py
 
 # Logs
 *.log
