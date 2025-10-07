@@ -631,10 +631,15 @@ async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
                 elif message.caption:
                     message_text = message.caption
                 
+                # Діагностика: показуємо що знаходимо
+                if message_text:
+                    print(f"Перевіряємо повідомлення: {message_text[:100]}...")
+                
                 # Шукаємо код фільму в тексті
                 code_match = re.search(r'Код:\s*([A-Za-z0-9]+)', message_text)
                 if code_match:
                     code = code_match.group(1).strip()
+                    print(f"Знайдено код: {code}")
                     
                     # Шукаємо посилання
                     link_match = re.search(r'Посилання:\s*(https?://[^\s\n]+)', message_text)
@@ -653,6 +658,8 @@ async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
                         print(f"Додано фільм: {code}")
                     else:
                         print(f"Помилка додавання фільму: {code}")
+                else:
+                    print("Код не знайдено в повідомленні")
         
         except Exception as e:
             print(f"Помилка при скануванні повідомлень: {e}")
