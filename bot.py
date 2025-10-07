@@ -620,46 +620,56 @@ async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
         movies_found = 0
         
         try:
-            # Отримуємо повідомлення з каналу
-            async for message in context.bot.get_chat_history(chat_id=channel_chat_id, limit=100):
-                messages_processed += 1
-                
-                # Отримуємо текст повідомлення
-                message_text = ""
-                if message.text:
-                    message_text = message.text
-                elif message.caption:
-                    message_text = message.caption
-                
-                # Діагностика: показуємо що знаходимо
-                if message_text:
-                    print(f"Перевіряємо повідомлення: {message_text[:100]}...")
-                
-                # Шукаємо код фільму в тексті
-                code_match = re.search(r'Код:\s*([A-Za-z0-9]+)', message_text)
-                if code_match:
-                    code = code_match.group(1).strip()
-                    print(f"Знайдено код: {code}")
+            # Отримуємо останні повідомлення з каналу через getUpdates
+            print("Отримуємо повідомлення з каналу...")
+            
+            # Отримуємо останні оновлення (тільки channel_post)
+            updates = await context.bot.get_updates(limit=100, timeout=10, allowed_updates=['channel_post'])
+            
+            for update in updates:
+                # Перевіряємо чи це повідомлення з нашого каналу
+                if (update.channel_post and 
+                    update.channel_post.chat.id == channel_chat_id):
                     
-                    # Шукаємо посилання
-                    link_match = re.search(r'Посилання:\s*(https?://[^\s\n]+)', message_text)
-                    link = link_match.group(1).strip() if link_match else None
+                    message = update.channel_post
+                    messages_processed += 1
                     
-                    # Додаємо фільм в базу даних
-                    success = database.add_movie(
-                        code=code,
-                        message_id=message.message_id,
-                        chat_id=channel_chat_id,
-                        link=link
-                    )
+                    # Отримуємо текст повідомлення
+                    message_text = ""
+                    if message.text:
+                        message_text = message.text
+                    elif message.caption:
+                        message_text = message.caption
                     
-                    if success:
-                        movies_found += 1
-                        print(f"Додано фільм: {code}")
+                    # Діагностика: показуємо що знаходимо
+                    if message_text:
+                        print(f"Перевіряємо повідомлення: {message_text[:100]}...")
+                    
+                    # Шукаємо код фільму в тексті
+                    code_match = re.search(r'Код:\s*([A-Za-z0-9]+)', message_text)
+                    if code_match:
+                        code = code_match.group(1).strip()
+                        print(f"Знайдено код: {code}")
+                        
+                        # Шукаємо посилання
+                        link_match = re.search(r'Посилання:\s*(https?://[^\s\n]+)', message_text)
+                        link = link_match.group(1).strip() if link_match else None
+                        
+                        # Додаємо фільм в базу даних
+                        success = database.add_movie(
+                            code=code,
+                            message_id=message.message_id,
+                            chat_id=channel_chat_id,
+                            link=link
+                        )
+                        
+                        if success:
+                            movies_found += 1
+                            print(f"Додано фільм: {code}")
+                        else:
+                            print(f"Помилка додавання фільму: {code}")
                     else:
-                        print(f"Помилка додавання фільму: {code}")
-                else:
-                    print("Код не знайдено в повідомленні")
+                        print("Код не знайдено в повідомленні")
         
         except Exception as e:
             print(f"Помилка при скануванні повідомлень: {e}")
