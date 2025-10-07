@@ -555,11 +555,11 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-        await update.message.reply_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
 
 
 # ========== ГОЛОВНА ФУНКЦІЯ ==========
