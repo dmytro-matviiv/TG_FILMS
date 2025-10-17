@@ -133,7 +133,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
             await query.edit_message_text(success_text)
         else:
-            # Все ще не підписаний
+            # Все ще не підписаний - показуємо помилку АЛЕ зберігаємо кнопки
             error_text = """
 Здається, ви ще не підписались на канал 😔
 
@@ -142,7 +142,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 2. Підпишіться на канал
 3. Поверніться сюди та натисніть "Я підписався ✓"
 """
-            await query.edit_message_text(error_text)
+            
+            # Зберігаємо кнопки для повторної спроби
+            keyboard = [
+                [InlineKeyboardButton("Підписатись на канал", url=f"https://t.me/{config.CHANNEL_USERNAME[1:]}")],
+                [InlineKeyboardButton("Я підписався ✓", callback_data="check_subscription")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(error_text, reply_markup=reply_markup)
     
     elif query.data == "refresh_database":
         # Користувач натиснув "Оновити" в панелі бази даних
@@ -331,16 +339,25 @@ async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_subscribed:
         # Якщо не підписаний - показуємо повідомлення про підписку
+        subscribe_text = f"""
+Щоб користуватись ботом, потрібно підписатись на наш канал!
+
+Канал: {config.CHANNEL_USERNAME}
+
+Там ви знайдете:
+- Коди фільмів з TikTok
+- Цікаві підбірки  
+- Новинки кіно
+
+Після підписки натисніть "Я підписався ✓"
+"""
         keyboard = [
             [InlineKeyboardButton("Підписатись на канал", url=f"https://t.me/{config.CHANNEL_USERNAME[1:]}")],
             [InlineKeyboardButton("Я підписався ✓", callback_data="check_subscription")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "Щоб користуватись ботом, спочатку підпішіться на канал!",
-            reply_markup=reply_markup
-        )
+        await update.message.reply_text(subscribe_text, reply_markup=reply_markup)
         return
     
     # Шукаємо фільм в базі даних
