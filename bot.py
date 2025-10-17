@@ -76,7 +76,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Як користуватись:
 1. Знайдіть код фільму в TikTok відео
-2. Надішліть мені цей код (наприклад: F001)
+2. Надішліть мені цей код (наприклад: 001)
 3. Я знайду назву та опис фільму
 
 Просто надішліть код фільму!
@@ -129,7 +129,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Тепер ви можете користуватись ботом!
 
-Надішліть мені код фільму (наприклад: F001)
+Надішліть мені код фільму (наприклад: 001)
 """
             await query.edit_message_text(success_text)
         else:
@@ -231,7 +231,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     Очікуваний формат поста:
     ---
     [ФОТО]
-    Код: F001
+    Код: 001
     Назва: Inception
     Рік: 2010
     
@@ -241,7 +241,7 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     Бот автоматично:
     1. Читає пост з каналу
-    2. Знаходить "Код: F001"
+    2. Знаходить "Код: 001"
     3. Зберігає в базу даних
     4. Надсилає підтвердження адміну
     """
@@ -264,11 +264,11 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info("⚠️ Пост без тексту, пропускаємо")
         return
     
-    # Шукаємо код в тексті: "Код: F001" (регістр не важливий)
+    # Шукаємо код в тексті: "Код: 001" (регістр не важливий)
     match = re.search(r'[Кк][Оо][Дд]:\s*([A-Za-z0-9]+)', text)
     
     if match:
-        code = match.group(1).upper()  # F001
+        code = match.group(1).upper()  # 001
         message_id = post.message_id
         chat_id = post.chat_id
         
@@ -514,7 +514,7 @@ async def list_movies_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     movies = database.get_all_movies()
     
     if not movies:
-        await update.message.reply_text("База даних порожня!\n\nПублікуйте пости в канал з текстом 'Код: F001'")
+        await update.message.reply_text("База даних порожня!\n\nПублікуйте пости в канал з текстом 'Код:001'")
         return
     
     # Формуємо список кодів
@@ -536,7 +536,7 @@ async def delete_movie_command(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     Команда /delete - видаляє фільм (тільки для адміністратора)
     Формат: /delete КОД
-    Приклад: /delete F001
+    Приклад: /delete 001
     """
     user = update.effective_user
     
@@ -547,7 +547,7 @@ async def delete_movie_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not context.args:
         await update.message.reply_text(
             "Вкажіть код фільму!\n\n"
-            "Приклад: /delete F001"
+            "Приклад: /delete 001"
         )
         return
     
@@ -580,7 +580,7 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not movies:
         await update.message.reply_text(
             "База даних порожня!\n\n"
-            "Публікуйте пости в канал з текстом 'Код: F001'"
+            "Публікуйте пости в канал з текстом 'Код: 001'"
         )
         return
     
@@ -672,7 +672,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             result_text += "📭 База даних порожня\n\n"
             result_text += "💡 Опублікуйте пости в канал @film_by_code з форматом:\n"
-            result_text += "Код: F001\nНазва: Назва фільму"
+            result_text += "Код: 001\nНазва: Назва фільму"
         
         await update.message.reply_text(result_text)
         
@@ -790,7 +790,12 @@ async def scan_channel_for_movies(context: ContextTypes.DEFAULT_TYPE):
 async def start_scanner_background():
     """Запуск сканера в фоновому режимі"""
     try:
-        await scanner.start()
+        # Запускаємо Pyrogram клієнт
+        success = await scanner.start()
+        if not success:
+            logger.error("❌ Не вдалося запустити Pyrogram клієнт!")
+            return
+        
         logger.info("✅ Pyrogram сканер запущено!")
         
         # 🔄 АВТОМАТИЧНЕ СКАНУВАННЯ ПРИ ЗАПУСКУ НА RAILWAY

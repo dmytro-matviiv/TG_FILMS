@@ -24,6 +24,13 @@ class ChannelScanner:
     async def start(self):
         """Запуск Pyrogram клієнта"""
         try:
+            # Перевіряємо чи налаштовано API
+            if config.API_ID == 'YOUR_API_ID' or config.API_HASH == 'YOUR_API_HASH':
+                logger.error("❌ API_ID або API_HASH не налаштовано!")
+                return False
+            
+            logger.info("🔧 Ініціалізую Pyrogram клієнт...")
+            
             self.client = Client(
                 "film_scanner",
                 api_id=config.API_ID,
@@ -32,11 +39,12 @@ class ChannelScanner:
             )
             
             await self.client.start()
-            logger.info("OK Pyrogram клієнт запущено!")
+            logger.info("✅ Pyrogram клієнт успішно запущено!")
             return True
             
         except Exception as e:
             logger.error(f"❌ Помилка запуску Pyrogram: {e}")
+            self.client = None  # Скидаємо клієнт при помилці
             return False
     
     async def stop(self):
@@ -94,6 +102,11 @@ class ChannelScanner:
         try:
             logger.info("SCAN Починаю сканування каналу...")
             
+            # Перевіряємо чи клієнт ініціалізовано
+            if not self.client:
+                logger.error("❌ Pyrogram клієнт не ініціалізовано!")
+                return 0
+            
             # Отримуємо інформацію про канал
             channel_username = config.CHANNEL_USERNAME.lstrip('@')
             channel = await self.client.get_chat(f"@{channel_username}")
@@ -147,6 +160,11 @@ class ChannelScanner:
         """
         try:
             logger.info("MONITOR Починаю моніторинг нових постів...")
+            
+            # Перевіряємо чи клієнт ініціалізовано
+            if not self.client:
+                logger.error("❌ Pyrogram клієнт не ініціалізовано для моніторингу!")
+                return
             
             channel_username = config.CHANNEL_USERNAME.lstrip('@')
             channel = await self.client.get_chat(f"@{channel_username}")
