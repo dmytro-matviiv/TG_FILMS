@@ -29,7 +29,19 @@ class ChannelScanner:
                 logger.error("❌ API_ID або API_HASH не налаштовано!")
                 return False
             
+            # 🔍 ДЕТАЛЬНА ДІАГНОСТИКА API КЛЮЧІВ
             logger.info("🔧 Ініціалізую Pyrogram клієнт...")
+            logger.info(f"📊 API_ID: {config.API_ID}")
+            logger.info(f"📊 API_HASH: {config.API_HASH[:10]}...")
+            logger.info(f"📊 PHONE_NUMBER: {config.PHONE_NUMBER}")
+            
+            # Перевіряємо чи API_ID є числом
+            try:
+                api_id_int = int(config.API_ID)
+                logger.info(f"✅ API_ID валідний: {api_id_int}")
+            except ValueError:
+                logger.error(f"❌ API_ID не є числом: {config.API_ID}")
+                return False
             
             self.client = Client(
                 "film_scanner",

@@ -627,6 +627,55 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== КОМАНДА СКАНУВАННЯ ==========
 
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда /debug - показує налаштування Pyrogram (тільки для адміністратора)
+    """
+    user = update.effective_user
+    
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text("Ця команда доступна тільки адміністратору!")
+        return
+    
+    # Показуємо налаштування (без повних ключів)
+    debug_text = f"""
+🔍 ДІАГНОСТИКА НАЛАШТУВАНЬ
+
+📊 API_ID: {config.API_ID}
+📊 API_HASH: {config.API_HASH[:10]}...{config.API_HASH[-5:] if len(config.API_HASH) > 15 else 'короткий'}
+📊 PHONE_NUMBER: {config.PHONE_NUMBER}
+📊 CHANNEL_USERNAME: {config.CHANNEL_USERNAME}
+📊 ADMIN_ID: {config.ADMIN_ID}
+
+🔧 СТАТУС PYROGRAM:
+"""
+    
+    # Перевіряємо чи API налаштовано
+    if config.API_ID == 'YOUR_API_ID' or config.API_HASH == 'YOUR_API_HASH':
+        debug_text += "❌ API_ID або API_HASH не налаштовано!\n"
+    else:
+        debug_text += "✅ API ключі налаштовано\n"
+        
+        # Перевіряємо чи API_ID є числом
+        try:
+            api_id_int = int(config.API_ID)
+            debug_text += f"✅ API_ID валідний: {api_id_int}\n"
+        except ValueError:
+            debug_text += f"❌ API_ID не є числом: {config.API_ID}\n"
+    
+    # Перевіряємо session файли
+    import os
+    session_files = ["film_scanner.session", "film_scanner.session-journal"]
+    debug_text += f"\n📁 SESSION ФАЙЛИ:\n"
+    for file in session_files:
+        if os.path.exists(file):
+            debug_text += f"✅ {file} - існує\n"
+        else:
+            debug_text += f"❌ {file} - не знайдено\n"
+    
+    await update.message.reply_text(debug_text)
+
+
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Команда /scan - сканує канал і відновлює базу даних
@@ -905,6 +954,7 @@ def main():
     application.add_handler(CommandHandler("delete", delete_movie_command))
     application.add_handler(CommandHandler("database", database_command))  # Нова команда!
     application.add_handler(CommandHandler("scan", scan_command))  # Команда сканування каналу
+    application.add_handler(CommandHandler("debug", debug_command))  # Команда діагностики
     
     # Реєструємо обробник кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
