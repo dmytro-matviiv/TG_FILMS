@@ -748,16 +748,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info("🔧 Ініціалізую Pyrogram клієнт для команди /scan...")
             success = await scanner.start()
             
-            if success == "waiting_for_code":
-                await update.message.reply_text(
-                    "📱 Потрібна авторизація!\n\n"
-                    "Код підтвердження надіслано в Telegram.\n"
-                    "Використовуйте команду:\n"
-                    "/auth КОД\n\n"
-                    "Приклад: /auth 12345"
-                )
-                return
-            elif not success:
+            if not success:
                 await update.message.reply_text(
                     "❌ Не вдалося ініціалізувати Pyrogram клієнт!\n\n"
                     "Можливі причини:\n"
