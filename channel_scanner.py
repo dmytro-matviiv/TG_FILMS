@@ -20,6 +20,8 @@ class ChannelScanner:
     def __init__(self):
         self.client = None
         self.is_running = False
+        self.waiting_for_code = False
+        self.auth_state = None
         
     async def start(self):
         """Запуск Pyrogram клієнта"""
@@ -51,7 +53,15 @@ class ChannelScanner:
                 in_memory=True  # Використовуємо пам'ять замість файлів
             )
             
-            await self.client.start()
+            # Запускаємо клієнт без авторизації
+            await self.client.connect()
+            
+            # Перевіряємо чи потрібна авторизація
+            if not await self.client.is_user_authorized():
+                logger.info("📱 Потрібна авторизація. Очікую код підтвердження...")
+                self.waiting_for_code = True
+                return "waiting_for_code"
+            
             logger.info("✅ Pyrogram клієнт успішно запущено!")
             return True
             
@@ -73,6 +83,23 @@ class ChannelScanner:
             
             self.client = None  # Скидаємо клієнт при помилці
             return False
+    
+    async def complete_auth(self, code):
+        """Завершення авторизації з кодом"""
+        try:
+            if not self.client or not self.waiting_for_code:
+                return False, "Клієнт не готовий до авторизації"
+            
+            # Відправляємо код підтвердження
+            await self.client.sign_in(code)
+            
+            self.waiting_for_code = False
+            logger.info("✅ Авторизація успішна!")
+            return True, "Авторизація завершена"
+            
+        except Exception as e:
+            logger.error(f"❌ Помилка авторизації: {e}")
+            return False, str(e)
     
     async def stop(self):
         """Зупинка Pyrogram клієнта"""

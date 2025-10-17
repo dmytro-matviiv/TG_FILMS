@@ -649,14 +649,20 @@ async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     code = context.args[0]
     
     try:
-        # Спробуємо завершити авторизацію
-        if scanner.client:
-            await scanner.client.sign_in(code)
-            await update.message.reply_text("✅ Авторизація успішна! Pyrogram готовий до роботи.")
+        # Завершуємо авторизацію
+        success, message = await scanner.complete_auth(code)
+        
+        if success:
+            await update.message.reply_text(
+                f"✅ {message}!\n\n"
+                "Тепер можете використовувати:\n"
+                "• /scan - сканування каналу\n"
+                "• /database - перегляд бази даних"
+            )
         else:
-            await update.message.reply_text("❌ Pyrogram клієнт не ініціалізовано. Спробуйте /scan спочатку.")
+            await update.message.reply_text(f"❌ Помилка авторизації: {message}")
     except Exception as e:
-        await update.message.reply_text(f"❌ Помилка авторизації: {e}")
+        await update.message.reply_text(f"❌ Помилка: {e}")
 
 
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -741,7 +747,17 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not scanner.client:
             logger.info("🔧 Ініціалізую Pyrogram клієнт для команди /scan...")
             success = await scanner.start()
-            if not success:
+            
+            if success == "waiting_for_code":
+                await update.message.reply_text(
+                    "📱 Потрібна авторизація!\n\n"
+                    "Код підтвердження надіслано в Telegram.\n"
+                    "Використовуйте команду:\n"
+                    "/auth КОД\n\n"
+                    "Приклад: /auth 12345"
+                )
+                return
+            elif not success:
                 await update.message.reply_text(
                     "❌ Не вдалося ініціалізувати Pyrogram клієнт!\n\n"
                     "Можливі причини:\n"
