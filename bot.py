@@ -637,7 +637,23 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ця команда доступна тільки адміністратору!")
         return
     
+    # Перевіряємо чи налаштовано Pyrogram
+    if config.API_ID == 'YOUR_API_ID' or config.API_HASH == 'YOUR_API_HASH':
+        await update.message.reply_text(
+            "⚠️ Pyrogram не налаштовано!\n\n"
+            "Для сканування каналу потрібно налаштувати Pyrogram:\n"
+            "1. Отримайте API_ID та API_HASH на https://my.telegram.org/\n"
+            "2. Додайте їх в Railway змінні середовища\n"
+            "3. Перезапустіть бота\n\n"
+            "Або використовуйте /add для ручного додавання фільмів."
+        )
+        return
+    
     await update.message.reply_text("🔄 Сканування каналу... Це може зайняти кілька хвилин.")
+    
+    # Зберігаємо час початку сканування
+    from datetime import datetime
+    context.bot_data['scan_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         # Запускаємо Pyrogram сканер
@@ -645,24 +661,84 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Показуємо результат
         movies = database.get_all_movies()
-        result_text = f"OK Сканування завершено!\n\n"
-        result_text += f"DB Додано нових фільмів: {movies_count}\n"
-        result_text += f"DB Всього в базі: {len(movies)}\n\n"
+        result_text = f"✅ Сканування завершено!\n\n"
+        result_text += f"📊 Додано нових фільмів: {movies_count}\n"
+        result_text += f"📊 Всього в базі: {len(movies)}\n\n"
         
         if movies:
-            result_text += "Фільми в базі:\n"
+            result_text += "🎬 Фільми в базі:\n"
             for movie in movies:
                 result_text += f"• {movie['code']} (ID: {movie['message_id']})\n"
         else:
-            result_text += "База даних порожня"
+            result_text += "📭 База даних порожня\n\n"
+            result_text += "💡 Опублікуйте пости в канал @film_by_code з форматом:\n"
+            result_text += "Код: F001\nНазва: Назва фільму"
         
         await update.message.reply_text(result_text)
         
+        # 📊 НАДСИЛАЄМО ЗВІТНІСТЬ АДМІНІСТРАТОРУ
+        try:
+            report_text = f"""
+📊 ЗВІТ ПРО СКАНУВАННЯ КАНАЛУ
+
+🎬 Канал: {config.CHANNEL_USERNAME}
+👤 Адміністратор: {user.first_name} (ID: {user.id})
+⏰ Час: {context.bot_data.get('scan_time', 'Невідомо')}
+
+📈 РЕЗУЛЬТАТИ:
+• Додано нових фільмів: {movies_count}
+• Всього фільмів в базі: {len(movies)}
+
+🎯 СТАТУС: ✅ Сканування успішно завершено
+"""
+            
+            if movies:
+                report_text += f"\n📋 СПИСОК ФІЛЬМІВ:\n"
+                for i, movie in enumerate(movies, 1):
+                    report_text += f"{i}. {movie['code']} (ID: {movie['message_id']})\n"
+            else:
+                report_text += f"\n⚠️ База даних порожня!\n"
+                report_text += f"Перевірте чи є пости з кодами в каналі {config.CHANNEL_USERNAME}"
+            
+            # Надсилаємо звіт адміністратору
+            await context.bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=report_text
+            )
+            logger.info("✅ Звіт про сканування надіслано адміністратору")
+            
+        except Exception as e:
+            logger.error(f"❌ Не вдалося надіслати звіт адміністратору: {e}")
+        
     except Exception as e:
         logger.error(f"Помилка сканування: {e}")
+        
+        # Надсилаємо звіт про помилку адміністратору
+        try:
+            error_report = f"""
+❌ ЗВІТ ПРО ПОМИЛКУ СКАНУВАННЯ
+
+🎬 Канал: {config.CHANNEL_USERNAME}
+👤 Адміністратор: {user.first_name} (ID: {user.id})
+⏰ Час: {context.bot_data.get('scan_time', 'Невідомо')}
+
+🚨 ПОМИЛКА: {str(e)}
+
+🔧 РІШЕННЯ:
+1. Перевірте налаштування API_ID та API_HASH
+2. Переконайтеся що бот адміністратор каналу
+3. Перевірте змінні середовища в Railway
+"""
+            await context.bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=error_report
+            )
+        except:
+            pass
+        
         await update.message.reply_text(
             f"❌ Помилка сканування: {e}\n\n"
-            f"Перевірте налаштування API_ID та API_HASH в config.py"
+            f"Перевірте налаштування API_ID та API_HASH в Railway."
         )
 
 
@@ -716,6 +792,54 @@ async def start_scanner_background():
     try:
         await scanner.start()
         logger.info("✅ Pyrogram сканер запущено!")
+        
+        # 🔄 АВТОМАТИЧНЕ СКАНУВАННЯ ПРИ ЗАПУСКУ НА RAILWAY
+        import os
+        if os.getenv('DATABASE_URL'):
+            logger.info("🚀 Railway виявлено! Запускаю автоматичне сканування...")
+            try:
+                movies_count = await scanner.scan_channel_history()
+                movies = database.get_all_movies()
+                
+                # Надсилаємо звіт адміністратору
+                from datetime import datetime
+                scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                report_text = f"""
+🚀 АВТОМАТИЧНЕ СКАНУВАННЯ ПРИ ЗАПУСКУ
+
+🎬 Канал: {config.CHANNEL_USERNAME}
+⏰ Час запуску: {scan_time}
+
+📈 РЕЗУЛЬТАТИ:
+• Додано нових фільмів: {movies_count}
+• Всього фільмів в базі: {len(movies)}
+
+🎯 СТАТУС: ✅ Бот готовий до роботи!
+"""
+                
+                if movies:
+                    report_text += f"\n📋 ФІЛЬМИ В БАЗІ:\n"
+                    for movie in movies[:10]:  # Показуємо перші 10
+                        report_text += f"• {movie['code']}\n"
+                    if len(movies) > 10:
+                        report_text += f"... та ще {len(movies) - 10} фільмів"
+                
+                # Надсилаємо звіт (якщо є доступ до бота)
+                try:
+                    # Створюємо тимчасовий бот для надсилання звіту
+                    from telegram import Bot
+                    temp_bot = Bot(token=config.BOT_TOKEN)
+                    await temp_bot.send_message(
+                        chat_id=config.ADMIN_ID,
+                        text=report_text
+                    )
+                    logger.info("✅ Звіт про автоматичне сканування надіслано адміністратору")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не вдалося надіслати звіт адміністратору: {e}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Помилка автоматичного сканування: {e}")
         
         # Запускаємо моніторинг нових постів
         await scanner.monitor_new_posts()
@@ -785,6 +909,13 @@ def main():
         print("OK Pyrogram сканер запущено!")
     else:
         print("WARN Pyrogram не налаштовано. Використовуйте /add для ручного додавання фільмів.")
+        
+        # 🔥 НОВИЙ ФУНКЦІОНАЛ: Автоматичне сканування при запуску на Railway
+        # Перевіряємо чи це Railway (є DATABASE_URL)
+        import os
+        if os.getenv('DATABASE_URL'):
+            print("🚀 Railway виявлено! Запускаю автоматичне сканування каналу...")
+            print("ℹ️ Використовуйте команду /scan для сканування каналу @film_by_code")
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
