@@ -53,10 +53,17 @@ class ChannelScanner:
                 in_memory=True  # Використовуємо пам'ять замість файлів
             )
             
-            # Запускаємо клієнт
-            await self.client.start()
-            logger.info("✅ Pyrogram клієнт успішно запущено!")
-            return True
+            # Запускаємо клієнт без блокування
+            try:
+                await self.client.start()
+                logger.info("✅ Pyrogram клієнт успішно запущено!")
+                return True
+            except Exception as auth_error:
+                if "confirmation code" in str(auth_error).lower() or "enter confirmation code" in str(auth_error).lower():
+                    logger.info("📱 Потрібна авторизація. Клієнт запущено, очікую код...")
+                    return "waiting_for_auth"
+                else:
+                    raise auth_error
             
         except Exception as e:
             logger.error(f"❌ Помилка запуску Pyrogram: {e}")

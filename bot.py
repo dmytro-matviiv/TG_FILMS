@@ -220,6 +220,116 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"✅ Фільм з кодом {code} видалено!")
         else:
             await query.edit_message_text(f"❌ Фільм з кодом {code} не знайдено!")
+    
+    # Обробка кнопок авторизації
+    elif query.data.startswith("auth_digit_"):
+        # Додаємо цифру до коду
+        digit = query.data.replace("auth_digit_", "")
+        current_code = context.user_data.get('auth_code', '')
+        
+        if len(current_code) < 6:  # Максимум 6 цифр
+            current_code += digit
+            context.user_data['auth_code'] = current_code
+            
+            # Оновлюємо повідомлення
+            display_code = current_code + "_" * (6 - len(current_code))
+            await query.edit_message_text(
+                f"🔐 **ВВЕДІТЬ КОД ПІДТВЕРДЖЕННЯ**\n\n"
+                f"Код має прийти в Telegram після команди /scan\n\n"
+                f"**Введений код:** `{display_code}`\n\n"
+                f"Натисніть цифри для введення коду, потім ✅ Підтвердити",
+                reply_markup=query.message.reply_markup,
+                parse_mode='Markdown'
+            )
+    
+    elif query.data == "auth_delete":
+        # Видаляємо останню цифру
+        current_code = context.user_data.get('auth_code', '')
+        if current_code:
+            current_code = current_code[:-1]
+            context.user_data['auth_code'] = current_code
+            
+            # Оновлюємо повідомлення
+            display_code = current_code + "_" * (6 - len(current_code))
+            await query.edit_message_text(
+                f"🔐 **ВВЕДІТЬ КОД ПІДТВЕРДЖЕННЯ**\n\n"
+                f"Код має прийти в Telegram після команди /scan\n\n"
+                f"**Введений код:** `{display_code}`\n\n"
+                f"Натисніть цифри для введення коду, потім ✅ Підтвердити",
+                reply_markup=query.message.reply_markup,
+                parse_mode='Markdown'
+            )
+    
+    elif query.data == "auth_confirm":
+        # Підтверджуємо код
+        current_code = context.user_data.get('auth_code', '')
+        
+        if not current_code:
+            await query.answer("Спочатку введіть код!", show_alert=True)
+            return
+        
+        try:
+            # Завершуємо авторизацію
+            success, message = await scanner.complete_auth(current_code)
+            
+            if success:
+                await query.edit_message_text(
+                    f"✅ **Авторизація успішна!**\n\n"
+                    f"{message}\n\n"
+                    "Тепер можете використовувати:\n"
+                    "• /scan - сканування каналу\n"
+                    "• /database - перегляд бази даних"
+                )
+            else:
+                await query.edit_message_text(
+                    f"❌ **Помилка авторизації!**\n\n"
+                    f"Повідомлення: {message}\n\n"
+                    "Спробуйте ще раз команду /auth"
+                )
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ **Помилка:** {e}\n\n"
+                "Спробуйте ще раз команду /auth"
+            )
+    
+    elif query.data == "auth_cancel":
+        # Скасовуємо авторизацію
+        context.user_data['auth_code'] = ""
+        await query.edit_message_text("❌ Авторизацію скасовано.")
+    
+    elif query.data == "start_auth":
+        # Запускаємо інтерактивну авторизацію
+        # Створюємо інтерактивне вікно для введення коду
+        keyboard = []
+        
+        # Кнопки з цифрами
+        for i in range(0, 10, 3):
+            row = []
+            for j in range(3):
+                if i + j < 10:
+                    row.append(InlineKeyboardButton(str(i + j), callback_data=f"auth_digit_{i + j}"))
+            keyboard.append(row)
+        
+        # Кнопки дій
+        keyboard.append([
+            InlineKeyboardButton("⌫ Видалити", callback_data="auth_delete"),
+            InlineKeyboardButton("✅ Підтвердити", callback_data="auth_confirm"),
+            InlineKeyboardButton("❌ Скасувати", callback_data="auth_cancel")
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Зберігаємо стан введення коду
+        context.user_data['auth_code'] = ""
+        
+        await query.edit_message_text(
+            "🔐 **ВВЕДІТЬ КОД ПІДТВЕРДЖЕННЯ**\n\n"
+            "Код має прийти в Telegram після команди /scan\n\n"
+            "**Введений код:** `_____`\n\n"
+            "Натисніть цифри для введення коду, потім ✅ Підтвердити",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
 
 
 # ========== АВТОМАТИЧНЕ ЗЧИТУВАННЯ ПОСТІВ З КАНАЛУ ==========
@@ -629,7 +739,7 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Команда /auth КОД - авторизація Pyrogram (тільки для адміністратора)
+    Команда /auth - інтерактивна авторизація Pyrogram (тільки для адміністратора)
     """
     user = update.effective_user
     
@@ -637,32 +747,45 @@ async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ця команда доступна тільки адміністратору!")
         return
     
-    if not context.args:
+    # Перевіряємо чи є клієнт
+    if not scanner.client:
         await update.message.reply_text(
-            "Вкажіть код підтвердження!\n\n"
-            "Формат: /auth КОД\n"
-            "Приклад: /auth 12345\n\n"
-            "Код прийде в Telegram після команди /scan"
+            "❌ Pyrogram клієнт не ініціалізовано!\n\n"
+            "Спочатку виконайте команду /scan"
         )
         return
     
-    code = context.args[0]
+    # Створюємо інтерактивне вікно для введення коду
+    keyboard = []
     
-    try:
-        # Завершуємо авторизацію
-        success, message = await scanner.complete_auth(code)
-        
-        if success:
-            await update.message.reply_text(
-                f"✅ {message}!\n\n"
-                "Тепер можете використовувати:\n"
-                "• /scan - сканування каналу\n"
-                "• /database - перегляд бази даних"
-            )
-        else:
-            await update.message.reply_text(f"❌ Помилка авторизації: {message}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Помилка: {e}")
+    # Кнопки з цифрами
+    for i in range(0, 10, 3):
+        row = []
+        for j in range(3):
+            if i + j < 10:
+                row.append(InlineKeyboardButton(str(i + j), callback_data=f"auth_digit_{i + j}"))
+        keyboard.append(row)
+    
+    # Кнопки дій
+    keyboard.append([
+        InlineKeyboardButton("⌫ Видалити", callback_data="auth_delete"),
+        InlineKeyboardButton("✅ Підтвердити", callback_data="auth_confirm"),
+        InlineKeyboardButton("❌ Скасувати", callback_data="auth_cancel")
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Зберігаємо стан введення коду
+    context.user_data['auth_code'] = ""
+    
+    await update.message.reply_text(
+        "🔐 **ВВЕДІТЬ КОД ПІДТВЕРДЖЕННЯ**\n\n"
+        "Код має прийти в Telegram після команди /scan\n\n"
+        "**Введений код:** `_____`\n\n"
+        "Натисніть цифри для введення коду, потім ✅ Підтвердити",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
 
 
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -748,7 +871,21 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info("🔧 Ініціалізую Pyrogram клієнт для команди /scan...")
             success = await scanner.start()
             
-            if not success:
+            if success == "waiting_for_auth":
+                keyboard = [
+                    [InlineKeyboardButton("🔐 Ввести код авторизації", callback_data="start_auth")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    "📱 **Потрібна авторизація!**\n\n"
+                    "Код підтвердження надіслано в Telegram.\n\n"
+                    "Натисніть кнопку нижче для введення коду:",
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                return
+            elif not success:
                 await update.message.reply_text(
                     "❌ Не вдалося ініціалізувати Pyrogram клієнт!\n\n"
                     "Можливі причини:\n"
@@ -1014,31 +1151,11 @@ def main():
         print("ℹ️ Pyrogram API налаштовано. Сканер буде запущено автоматично.")
         print("💡 Використовуйте команду /scan для сканування каналу")
         
-        # 🔄 АВТОМАТИЧНЕ СКАНУВАННЯ ПРИ ЗАПУСКУ НА RAILWAY
+        # 🔄 ІНФОРМАЦІЯ ПРО RAILWAY
         import os
         if os.getenv('DATABASE_URL'):
-            print("🚀 Railway виявлено! Запускаю автоматичне сканування каналу...")
-            import asyncio
-            import threading
-            
-            def run_auto_scan():
-                async def auto_scan():
-                    try:
-                        success = await scanner.start()
-                        if success:
-                            movies_count = await scanner.scan_channel_history()
-                            movies = database.get_all_movies()
-                            print(f"📊 Автоматичне сканування завершено: {movies_count} фільмів, всього в базі: {len(movies)}")
-                        else:
-                            print("❌ Не вдалося запустити автоматичне сканування")
-                    except Exception as e:
-                        print(f"❌ Помилка автоматичного сканування: {e}")
-                
-                asyncio.run(auto_scan())
-            
-            # Запускаємо автоматичне сканування в окремому потоці
-            scan_thread = threading.Thread(target=run_auto_scan, daemon=True)
-            scan_thread.start()
+            print("🚀 Railway виявлено! Бот готовий до роботи.")
+            print("💡 Використовуйте команду /scan для сканування каналу @film_by_code")
     else:
         print("⚠️ Pyrogram не налаштовано. Використовуйте /add для ручного додавання фільмів.")
         
