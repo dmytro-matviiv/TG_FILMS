@@ -47,7 +47,8 @@ class ChannelScanner:
                 "film_scanner",
                 api_id=config.API_ID,
                 api_hash=config.API_HASH,
-                phone_number=config.PHONE_NUMBER
+                phone_number=config.PHONE_NUMBER,
+                in_memory=True  # Використовуємо пам'ять замість файлів
             )
             
             await self.client.start()

@@ -627,6 +627,38 @@ async def database_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== КОМАНДА СКАНУВАННЯ ==========
 
+async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда /auth КОД - авторизація Pyrogram (тільки для адміністратора)
+    """
+    user = update.effective_user
+    
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text("Ця команда доступна тільки адміністратору!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "Вкажіть код підтвердження!\n\n"
+            "Формат: /auth КОД\n"
+            "Приклад: /auth 12345\n\n"
+            "Код прийде в Telegram після команди /scan"
+        )
+        return
+    
+    code = context.args[0]
+    
+    try:
+        # Спробуємо завершити авторизацію
+        if scanner.client:
+            await scanner.client.sign_in(code)
+            await update.message.reply_text("✅ Авторизація успішна! Pyrogram готовий до роботи.")
+        else:
+            await update.message.reply_text("❌ Pyrogram клієнт не ініціалізовано. Спробуйте /scan спочатку.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка авторизації: {e}")
+
+
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Команда /debug - показує налаштування Pyrogram (тільки для адміністратора)
@@ -955,6 +987,7 @@ def main():
     application.add_handler(CommandHandler("database", database_command))  # Нова команда!
     application.add_handler(CommandHandler("scan", scan_command))  # Команда сканування каналу
     application.add_handler(CommandHandler("debug", debug_command))  # Команда діагностики
+    application.add_handler(CommandHandler("auth", auth_command))  # Команда авторизації
     
     # Реєструємо обробник кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
