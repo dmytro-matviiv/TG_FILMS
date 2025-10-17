@@ -656,6 +656,17 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data['scan_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
+        # 🔧 ІНІЦІАЛІЗУЄМО PYROGRAM КЛІЄНТ ДЛЯ КОМАНДИ /SCAN
+        if not scanner.client:
+            logger.info("🔧 Ініціалізую Pyrogram клієнт для команди /scan...")
+            success = await scanner.start()
+            if not success:
+                await update.message.reply_text(
+                    "❌ Не вдалося ініціалізувати Pyrogram клієнт!\n\n"
+                    "Перевірте налаштування API_ID та API_HASH в Railway."
+                )
+                return
+        
         # Запускаємо Pyrogram сканер
         movies_count = await scanner.scan_channel_history()
         
@@ -908,6 +919,32 @@ def main():
     if config.API_ID != 'YOUR_API_ID' and config.API_HASH != 'YOUR_API_HASH':
         print("ℹ️ Pyrogram API налаштовано. Сканер буде запущено автоматично.")
         print("💡 Використовуйте команду /scan для сканування каналу")
+        
+        # 🔄 АВТОМАТИЧНЕ СКАНУВАННЯ ПРИ ЗАПУСКУ НА RAILWAY
+        import os
+        if os.getenv('DATABASE_URL'):
+            print("🚀 Railway виявлено! Запускаю автоматичне сканування каналу...")
+            import asyncio
+            import threading
+            
+            def run_auto_scan():
+                async def auto_scan():
+                    try:
+                        success = await scanner.start()
+                        if success:
+                            movies_count = await scanner.scan_channel_history()
+                            movies = database.get_all_movies()
+                            print(f"📊 Автоматичне сканування завершено: {movies_count} фільмів, всього в базі: {len(movies)}")
+                        else:
+                            print("❌ Не вдалося запустити автоматичне сканування")
+                    except Exception as e:
+                        print(f"❌ Помилка автоматичного сканування: {e}")
+                
+                asyncio.run(auto_scan())
+            
+            # Запускаємо автоматичне сканування в окремому потоці
+            scan_thread = threading.Thread(target=run_auto_scan, daemon=True)
+            scan_thread.start()
     else:
         print("⚠️ Pyrogram не налаштовано. Використовуйте /add для ручного додавання фільмів.")
         
