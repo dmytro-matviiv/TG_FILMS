@@ -59,7 +59,10 @@ class ChannelScanner:
                 logger.info("✅ Pyrogram клієнт успішно запущено!")
                 return True
             except Exception as auth_error:
-                if "confirmation code" in str(auth_error).lower() or "enter confirmation code" in str(auth_error).lower():
+                error_msg = str(auth_error).lower()
+                if ("confirmation code" in error_msg or 
+                    "enter confirmation code" in error_msg or
+                    "eof when reading a line" in error_msg):
                     logger.info("📱 Потрібна авторизація. Клієнт запущено, очікую код...")
                     return "waiting_for_auth"
                 else:
@@ -87,11 +90,23 @@ class ChannelScanner:
     async def complete_auth(self, code):
         """Завершення авторизації з кодом"""
         try:
-            if not self.client:
-                return False, "Клієнт не готовий до авторизації"
+            # Створюємо новий клієнт для авторизації
+            temp_client = Client(
+                "temp_auth",
+                api_id=config.API_ID,
+                api_hash=config.API_HASH,
+                phone_number=config.PHONE_NUMBER,
+                in_memory=True
+            )
+            
+            await temp_client.start()
             
             # Відправляємо код підтвердження
-            await self.client.sign_in(code)
+            await temp_client.sign_in(code)
+            
+            # Якщо успішно - замінюємо основний клієнт
+            await self.client.stop()
+            self.client = temp_client
             
             logger.info("✅ Авторизація успішна!")
             return True, "Авторизація завершена"
