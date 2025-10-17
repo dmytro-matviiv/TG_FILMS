@@ -663,7 +663,11 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not success:
                 await update.message.reply_text(
                     "❌ Не вдалося ініціалізувати Pyrogram клієнт!\n\n"
-                    "Перевірте налаштування API_ID та API_HASH в Railway."
+                    "Можливі причини:\n"
+                    "• API_ID або API_HASH неправильні\n"
+                    "• Невалідні session файли (будуть видалені автоматично)\n"
+                    "• Проблеми з мережею\n\n"
+                    "Спробуйте команду /scan ще раз через хвилину."
                 )
                 return
         

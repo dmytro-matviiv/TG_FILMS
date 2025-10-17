@@ -44,6 +44,20 @@ class ChannelScanner:
             
         except Exception as e:
             logger.error(f"❌ Помилка запуску Pyrogram: {e}")
+            
+            # 🔧 АВТОМАТИЧНЕ ВИДАЛЕННЯ SESSION ФАЙЛІВ ПРИ ПОМИЛЦІ АВТОРИЗАЦІЇ
+            if "AUTH_KEY_UNREGISTERED" in str(e):
+                logger.info("🧹 Видаляю невалідні session файли...")
+                try:
+                    import os
+                    session_files = ["film_scanner.session", "film_scanner.session-journal"]
+                    for file in session_files:
+                        if os.path.exists(file):
+                            os.remove(file)
+                            logger.info(f"✅ Видалено: {file}")
+                except Exception as cleanup_error:
+                    logger.error(f"❌ Не вдалося видалити session файли: {cleanup_error}")
+            
             self.client = None  # Скидаємо клієнт при помилці
             return False
     
